@@ -19,40 +19,25 @@ import scala.util.Random
 class Tcp2[F[_]: Concurrent: ContextShift](
   pipe: Pipe[F, Byte, TcpResponse[Array[Byte]]],
   addr: InetSocketAddress,
-) {
+) extends StreamStrategy[F, Resource[F, Socket[F]]] {
 
   type StreamResponse = Stream[F, TcpResponse[Array[Byte]]]
 
-  def run: StreamResponse =
+  protected val streams =
     for {
       blocker <- Stream.resource(Blocker[F])
       socketGroup <- Stream.resource(SocketGroup[F](blocker))
       (_, streams) <- Stream.resource(socketGroup.serverResource[F](addr, receiveBufferSize = 1024 * 1024))
-      acquiredLog = s"acquired ${addr.getHostName} ${addr.getPort}".i
-      response <- Stream.emit(acquiredLog) ++ streams.map(handleClient).parJoinUnbounded
+      socket <- streams
+    } yield socket
+
+  protected def handle(clientResource: Resource[F, Socket[F]]): Stream[F, TcpResponse[Array[Byte]]] =
+    for {
+      socket <- Stream.resource(clientResource)
+      response <- handleSocket(socket)
     } yield response
 
-  private def handleClient(clientResource: Resource[F, Socket[F]]): StreamResponse = {
-    val stream =
-      for {
-        socket <- Stream.resource(clientResource)
-        addr <- Stream.eval(socket.remoteAddress)
-        logId <- Stream.eval(Sync[F].delay(addr.toString + Random.nextInt()))
-      } yield (socket, logId)
-
-    val resultingStream = for {
-      (socket, _) <- stream
-      response <-
-        handleNoLogging(socket)
-          .handleErrorWith {
-            ex => Stream.emit(s"exception handling socket ${ex.getMessage}".i)
-          }
-    } yield response
-
-    resultingStream.handleErrorWith(ex => Stream.emit(s"exception opening socket ${ex.getMessage}".i))
-  }
-
-  private def handleNoLogging(socket: Socket[F]): StreamResponse =
+  private def handleSocket(socket: Socket[F]): StreamResponse =
     socket
       .reads(8192)
       .through(pipe)
