@@ -15,6 +15,7 @@ import fs2.io.tcp.SocketGroup
 import TcpResponse._
 
 import scala.util.Random
+import scodec.bits.ByteVector
 
 class Tcp2[F[_]: Concurrent: ContextShift](
   pipe: Pipe[F, Byte, TcpResponse[Array[Byte]]],
@@ -46,4 +47,21 @@ class Tcp2[F[_]: Concurrent: ContextShift](
         case other => Stream.emit(other)
       }
       .onComplete(Stream.eval_(socket.endOfOutput))
+}
+
+class Repeater[F[_]](
+  pipe: Pipe[F, Byte, TcpResponse[Array[Byte]]],
+  hex: ByteVector,
+) extends StreamStrategy[F, Array[Byte]]{
+
+  protected val streams = Stream(hex.toArray).repeat
+
+  protected def handle(ins: Array[Byte]): Stream[F, TcpResponse[Array[Byte]]] =
+    Stream
+      .emits(ins)
+      .through(pipe)
+      .flatMap {
+        case OutputResponse(v) => Stream.empty
+        case other => Stream.emit(other)
+      }
 }

@@ -4,7 +4,7 @@ import fs2.Stream
 import TcpResponse._
 import cats.effect.Concurrent
 
-abstract class StreamStrategy[F[_]: Concurrent, O] {
+abstract class StreamStrategy[F[_], O] {
 
   final def run: Stream[F, TcpResponse[Array[Byte]]] =
     Stream.emit(s"started stream".i) ++ streams.flatMap(in => handle(in).handleErrorWith(logError))

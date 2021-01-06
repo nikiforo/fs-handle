@@ -23,28 +23,14 @@ object Server extends IOApp {
           conditional(tpe != 2, Common.extensible2bytes.flatZip(a1 => ignore((a1._2+2)*8) ))
       }
 
-  def run(args : List[String]): IO[ExitCode] = {
-      val action = for {
-        rpcCounter <- Stream.eval(RpcRefCounter[IO])
-        rpcStream = launchRpcCounter(rpcCounter)
-        serverStream = server(rpcCounter)
-        _ <- Stream(serverStream, rpcStream).parJoinUnbounded
-      } yield {}
+  def run(args : List[String]): IO[ExitCode] =
+    server
+      .compile
+      .drain
+      .recoverWith { ex => IO.delay(println(s"DISASTER: ${ex.getMessage}")) }
+      .as(ExitCode.Success)
 
-      action
-        .compile
-        .drain
-        .recoverWith { ex => IO.delay(println(s"DISASTER: ${ex.getMessage}")) }
-        .as(ExitCode.Success)
-  }
-
-  private def launchRpcCounter(rpcCounter: RpcRefCounter[IO]): Stream[IO, Unit] =
-    Stream
-      .repeatEval(rpcCounter.stats)
-      .metered(1.seconds)
-      .evalMap { rpcs => IO.delay(println(s"got $rpcs messages")) }
-
-  private def server(rpcCounter: RpcRefCounter[IO]) = {
+  private def server = {
     val pipe: Pipe[IO, Unit, TcpResponse[Array[Byte]]] = _.map(_ => OutputResponse("this_is_stub".getBytes()))
     val decoder = parser.map { case _ => {}}
 
@@ -54,10 +40,10 @@ object Server extends IOApp {
           .flatMap(msg => fs2.Stream(OutputResponse(msg), Request))
           .throughFlatResponse(pipe)
 
-    val server = new Tcp2(hc, new InetSocketAddress("127.0.0.1", 20111))
+    val server = new Repeater(hc, hex"2424000000000e000000000000000000000000000000002421")
 
     server.run.evalMap {
-      case Request => rpcCounter.handle
+      case Request => IO.unit
       case LogResponse(ls) => IO.delay(println(ls))
       case _ => IO.unit
     }
