@@ -11,7 +11,17 @@ import scodec.stream.StreamDecoder
 import TcpResponse._
 import java.net.InetSocketAddress
 
+import scodec.codecs._
+import scodec.bits._
+
 object Server extends IOApp {
+
+  private val parser =
+    constant(hex"2424") ~
+      Common.extensible1byte.flatZip { case(_, tpe) =>
+        Common.ignore16 ~
+          conditional(tpe != 2, Common.extensible2bytes.flatZip(a1 => ignore((a1._2+2)*8) ))
+      }
 
   def run(args : List[String]): IO[ExitCode] = {
       val action = for {
@@ -35,15 +45,14 @@ object Server extends IOApp {
       .evalMap { rpcs => IO.delay(println(s"got $rpcs messages")) }
 
   private def server(rpcCounter: RpcRefCounter[IO]) = {
-    val cr2: Pipe[IO, Messages, TcpResponse[Array[Byte]]] = new CR2
-
-    val decoder = Message.parser3.map { case _ => MessageStub }
+    val pipe: Pipe[IO, Unit, TcpResponse[Array[Byte]]] = _.map(_ => OutputResponse("this_is_stub".getBytes()))
+    val decoder = parser.map { case _ => {}}
 
     val hc: Pipe[IO, Byte, TcpResponse[Array[Byte]]] =
       in =>
         in.through(StreamDecoder.many(decoder).toPipeByte)
           .flatMap(msg => fs2.Stream(OutputResponse(msg), Request))
-          .throughFlatResponse(cr2)
+          .throughFlatResponse(pipe)
 
     val server = new Tcp2(hc, new InetSocketAddress("127.0.0.1", 20111))
 
