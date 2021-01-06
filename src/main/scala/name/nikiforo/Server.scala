@@ -16,13 +16,6 @@ import scodec.bits._
 
 object Server extends IOApp {
 
-  private val parser =
-    constant(hex"2424") ~
-      Common.extensible1byte.flatZip { case(_, tpe) =>
-        Common.ignore16 ~
-          conditional(tpe != 2, Common.extensible2bytes.flatZip(a1 => ignore((a1._2+2)*8) ))
-      }
-
   def run(args : List[String]): IO[ExitCode] =
     server
       .compile
@@ -30,17 +23,24 @@ object Server extends IOApp {
       .recoverWith { ex => IO.delay(println(s"DISASTER: ${ex.getMessage}")) }
       .as(ExitCode.Success)
 
+  val H42 = hex"42".toByte()
+  val H24 = hex"24".toByte()
+
   private def server = {
     val pipe: Pipe[IO, Unit, TcpResponse[Array[Byte]]] = _.map(_ => OutputResponse("this_is_stub".getBytes()))
-    val decoder = parser.map { case _ => {}}
+    val decoderPipe: Pipe[IO, Byte, Unit] =
+      _.flatMap {
+        case H42 => Stream({})
+        case H24 => Stream.raiseError[IO](new IllegalArgumentException("not 42!"))
+      }
 
     val hc: Pipe[IO, Byte, TcpResponse[Array[Byte]]] =
       in =>
-        in.through(StreamDecoder.many(decoder).toPipeByte)
+        in.through(decoderPipe)
           .flatMap(msg => fs2.Stream(OutputResponse(msg), Request))
           .throughFlatResponse(pipe)
 
-    val server = new Repeater(hc, hex"2424000000000e000000000000000000000000000000002421")
+    val server = new Repeater(hc, ByteVector(Array(H42, H24)))
 
     server.run.evalMap {
       case Request => IO.unit
