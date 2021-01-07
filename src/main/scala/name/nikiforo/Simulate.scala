@@ -20,10 +20,7 @@ object Simulate extends IOApp {
     Stream(Stream(H42, H24))
       .repeat
       .flatMap(_.through(clientPipe).handleErrorWith(logError))
-      .evalMap {
-        case Some(log) => IO.delay(println(log))
-        case None => IO.unit
-      }
+      .evalMap(_ => IO.unit)
       .compile
       .drain
       .recoverWith { ex => IO.delay(println(s"DISASTER: ${ex.getMessage}")) }
