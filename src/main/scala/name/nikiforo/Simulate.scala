@@ -28,15 +28,11 @@ object Simulate extends IOApp {
 
   private def clientPipe(ins: Stream[IO, Byte]): Stream[IO, Unit] = {
     val stream =
-      for {
-        in <- ins
-        v <-
-          in match {
-            case H42 => Stream({})
-            case H24 => Stream.raiseError[IO](new IllegalArgumentException("not 42!"))
-          }
-      } yield {}
-    
+      ins.flatMap {
+        case H42 => Stream({})
+        case H24 => Stream.raiseError[IO](new IllegalArgumentException("not 42!"))
+      }
+
     for {
       broadList <- stream.through(Broadcast(1)).pull.take(1).void.streamNoScope.foldMap(List(_))
       response <- broadList.head
