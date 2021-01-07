@@ -41,12 +41,10 @@ object Simulate extends IOApp {
       } yield {}
     
     for {
-      broadList <- stream.through(Broadcast(2)).pull.take(2).void.streamNoScope.foldMap(List(_))
-      first = broadList.head
-      second = broadList(1)
-      response <- first.merge(second)
+      broadList <- stream.through(Broadcast(1)).pull.take(1).void.streamNoScope.foldMap(List(_))
+      response <- broadList.head
     } yield none
   }
 
-  private def logError(ex: Throwable) = Stream.emit(s"exception handling stream ${ex.getMessage}".some)
+  private def logError(ex: Throwable) = Stream.eval_(IO.delay(println(s"exception handling stream ${ex.getMessage}")))
 }
