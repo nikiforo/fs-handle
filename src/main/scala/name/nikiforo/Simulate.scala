@@ -26,7 +26,7 @@ object Simulate extends IOApp {
       .recoverWith { ex => IO.delay(println(s"DISASTER: ${ex.getMessage}")) }
       .as(ExitCode.Success)
 
-  private def clientPipe(ins: Stream[IO, Byte]): Stream[IO, Option[String]] = {
+  private def clientPipe(ins: Stream[IO, Byte]): Stream[IO, Unit] = {
     val stream =
       for {
         in <- ins
@@ -40,7 +40,7 @@ object Simulate extends IOApp {
     for {
       broadList <- stream.through(Broadcast(1)).pull.take(1).void.streamNoScope.foldMap(List(_))
       response <- broadList.head
-    } yield none
+    } yield {}
   }
 
   private def logError(ex: Throwable) = Stream.eval_(IO.delay(println(s"exception handling stream ${ex.getMessage}")))
